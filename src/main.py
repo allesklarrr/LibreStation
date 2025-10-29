@@ -54,7 +54,7 @@ def get_source(url: str):
     try:
         info = ytdl.extract_info(url, download=False)
         if "entries" in info:
-            info = info["entries"][0]  # pega a primeira música se for playlist
+            info = info["entries"][0]
         return info["url"], info.get("title", "Unknown title")
     except Exception as e:
         print(f"[ ERROR ] yt_dlp failed: {e}")
@@ -159,8 +159,9 @@ async def about(ctx):
     embed = discord.Embed(
         title="About LibreStation",
         description=(
-            "**LibreStation** is a minimalist and open-source music bot developed in Python "
-            "using `discord.py` and `yt_dlp`, and licensed under the terms of the **GNU General Public License v2**.\n\n"
+            "**LibreStation** is a minimalist and open-source music bot developed in Python"
+            "using `discord.py` and `yt_dlp`, licesenc under the **GNU GPLv2** and with support\n"
+	    "for Youtube and Spotify music links.\n\n"
             "⏺  **Default prefix:** `libre!`\n"
             "⏺  **License:** [GNU GPL v2](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)\n"
             "⏺  **Source code:** publicly available at https://github.com/exzygo/LibreStation"
