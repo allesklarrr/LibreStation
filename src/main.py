@@ -1,5 +1,7 @@
-import os
 import discord
+import yt_dlp
+import asyncio
+import os
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -10,22 +12,66 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="libre!", intents=intents, help_command=None)
 
+yt_dl_opts = {"format": "bestaudio", "noplaylist": True}
+ytdl = yt_dlp.YoutubeDL(yt_dl_opts)
 
-@bot.command(name="help")
-async def help_command(ctx):
-    embed = discord.Embed(
-        title="📜 LibreStation Music Bot Help",
-        description="Comandos disponíveis:",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="🎵 **libre!add <url>**", value="Adiciona uma música à fila e começa a tocar.", inline=False)
-    embed.add_field(name="⏸ **libre!stop**", value="Pausa a reprodução atual.", inline=False)
-    embed.add_field(name="▶️ **libre!play**", value="Retoma a música pausada.", inline=False)
-    embed.add_field(name="⏭ **libre!skip**", value="Pula para a próxima música da fila.", inline=False)
-    embed.add_field(name="📋 **libre!queue**", value="Mostra a fila de reprodução.", inline=False)
-    embed.add_field(name="👋 **libre!exit**", value="Desconecta o bot do canal de voz.", inline=False)
-    embed.set_footer(text="Feito com ♥ usando discord.py e yt-dlp")
-    await ctx.send(embed=embed)
+ffmpeg_opts = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn"
+}
+
+queues = {}
+paused_timestamps = {}
+current_sources = {}
+
+
+def get_source(url: str):
+    info = ytdl.extract_info(url, download=False)
+    return info["url"], info.get("title", "Unknown title")
+
+
+async def animate_extraction(ctx, msg):
+    frames = ["○","●"]
+    i = 0
+    while True:
+        try:
+            frame = frames[i % len(frames)]
+            await msg.edit(content=f"[ FFMPEG ] **Extracting and Downloading URL** (  {frame}  )")
+            await asyncio.sleep(0.25)
+            i += 1
+        except discord.NotFound:
+            break
+        except asyncio.CancelledError:
+            break
+
+
+async def next(ctx):
+    vc = ctx.voice_client
+    if ctx.guild.id in queues and queues[ctx.guild.id]:
+        msg = await ctx.send("[ FFMPEG ] **Extracting and Downloading URL**")
+        task = asyncio.create_task(animate_extraction(ctx, msg))
+
+        song = queues[ctx.guild.id].pop(0)
+        source_url, title = await asyncio.to_thread(get_source, song["url"])
+        current_sources[ctx.guild.id] = source_url
+
+        await asyncio.sleep(1.5)
+
+        try:
+            task.cancel()
+            await msg.edit(content=f"[ FFMPEG ] **Stream ready!** (  ✓  )")
+        except Exception:
+            pass
+
+        vc.play(
+            discord.FFmpegPCMAudio(source_url, **ffmpeg_opts),
+            after=lambda e: asyncio.run_coroutine_threadsafe(next(ctx), bot.loop)
+        )
+        await ctx.send(f"[  ▶  ] Now playing: **{title}**")
+
+    else:
+        await ctx.send("[  *  ] Queue finished")
+        current_sources.pop(ctx.guild.id, None)
 
 
 @bot.event
@@ -33,18 +79,143 @@ async def on_ready():
     print(f"[ LOG ] Bot conectado como: {bot.user}")
 
 
-async def load_cogs():
-    for filename in os.listdir("./src/cogs"):
-        if filename.endswith(".py"):
-            await bot.load_extension(f"src.cogs.{filename[:-3]}")
+@bot.command(name="help")
+async def help_command(ctx):
+    embed = discord.Embed(
+        title="LibreStation — Command Help",
+        description="List of available commands for the LibreStation bot.\nUse `libre!<command>` to execute.",
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="▶  Music Playback",
+        value=(
+            "**add <url>** — Adds a song to the queue and starts playing.\n"
+            "**play** — Resumes the current playback.\n"
+            "**stop** — Pauses the current song.\n"
+            "**skip** — Skips to the next song.\n"
+            "**queue** — Displays the current playback queue.\n"
+            "**exit** — Disconnects the bot from the voice channel."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="▶ Information",
+        value=(
+            "**help** — Shows this help message.\n"
+            "**about** — Displays information about the bot."
+        ),
+        inline=False
+    )
+
+    embed.set_footer(
+        text=(
+            "LibreStation © 2025 — Free software under the GNU General Public License v2 (GPLv2)\n"
+            "You may redistribute and/or modify this program under the terms of the GPLv2."
+        )
+    )
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
+
+    await ctx.send(embed=embed)
 
 
-async def main():
-    async with bot:
-        await load_cogs()
-        await bot.start(os.getenv("BOT_TOKEN"))
+@bot.command(name="about")
+async def about(ctx):
+    embed = discord.Embed(
+        title="About LibreStation",
+        description=(
+            "**LibreStation** is a minimalist and open-source music bot developed in Python "
+            "using `discord.py` and `yt_dlp`, and licensed under the terms of the **GNU General Public License v2**.\n\n"
+            "⏺  **Default prefix:** `libre!`\n"
+            "⏺  **License:** [GNU GPL v2](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)\n"
+            "⏺  **Source code:** publicly available at https://github.com/exzygo/LibreStation"
+        ),
+        color=discord.Color.green()
+    )
+
+    embed.set_footer(
+        text=(
+            "LibreStation © 2025 — Distributed under the GNU GPLv2.\n"
+            "No warranties; see the full license text for details."
+        )
+    )
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
+
+    await ctx.send(embed=embed)
 
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+@bot.command()
+async def exit(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+        await ctx.send("👋 Bye bye")
+    else:
+        await ctx.send("Im not on a voice channel, vro")
+
+
+@bot.command()
+async def add(ctx, url: str):
+    if not ctx.author.voice:
+        await ctx.send("You need to be on a voice channel, man. Sybau")
+        return
+
+    if not ctx.voice_client:
+        await ctx.author.voice.channel.connect(self_deaf=True)
+
+    source_url, title = await asyncio.to_thread(get_source, url)
+
+    if ctx.guild.id not in queues:
+        queues[ctx.guild.id] = []
+
+    queues[ctx.guild.id].append({"url": url, "title": title})
+    await ctx.send(f"[  *  ] Music added: **{title}**")
+
+    vc = ctx.voice_client
+    if not vc.is_playing() and not vc.is_paused():
+        await next(ctx)
+
+
+@bot.command()
+async def stop(ctx):
+    vc = ctx.voice_client
+    if vc and vc.is_playing():
+        vc.pause()
+        await ctx.send("[  ❚❚  ] Paused")
+    else:
+        await ctx.send("[  *  ] No music on queue")
+
+
+@bot.command()
+async def play(ctx):
+    vc = ctx.voice_client
+    if vc and vc.is_paused():
+        vc.resume()
+        await ctx.send("[  ▶  ] Playing")
+    elif not vc:
+        await ctx.send("Im not in a voice channel. Lemme join u! :D")
+    else:
+        await ctx.send("[  *  ] No music on queue")
+
+
+@bot.command()
+async def skip(ctx):
+    vc = ctx.voice_client
+    if vc and vc.is_playing():
+        vc.stop()
+        await ctx.send("[  ►►  ] Skipped ")
+    else:
+        await ctx.send("[  *  ] No music on queue")
+
+
+@bot.command()
+async def queue(ctx):
+    if ctx.guild.id not in queues or len(queues[ctx.guild.id]) == 0:
+        await ctx.send("[  *  ] No music on queue")
+        return
+
+    queue_list = "\n".join([f"{i+1}. **{song['title']}**" for i, song in enumerate(queues[ctx.guild.id])])
+    await ctx.send(f"[  *  ] **Queue:**\n{queue_list}")
+
+
+bot.run(os.getenv("BOT_TOKEN"))
