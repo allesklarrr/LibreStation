@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src
 
-COPY .env .env
+# COPY .env .env
 
 EXPOSE 80
 
