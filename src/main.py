@@ -4,6 +4,7 @@ import asyncio
 import os
 from discord.ext import commands
 from dotenv import load_dotenv
+import re
 
 load_dotenv()
 
@@ -12,7 +13,14 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="libre!", intents=intents, help_command=None)
 
-yt_dl_opts = {"format": "bestaudio", "noplaylist": True}
+yt_dl_opts = {
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": True,
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0",
+    "extract_flat": False
+}
 ytdl = yt_dlp.YoutubeDL(yt_dl_opts)
 
 ffmpeg_opts = {
@@ -25,9 +33,32 @@ paused_timestamps = {}
 current_sources = {}
 
 
+def get_spotify_title(spotify_url: str):
+    try:
+        info = ytdl.extract_info(spotify_url, download=False, process=False)
+        if info and "title" in info:
+            return info["title"]
+    except Exception:
+        pass
+    match = re.search(r"track/([a-zA-Z0-9]+)", spotify_url)
+    if match:
+        return f"spotify track {match.group(1)}"
+    return "spotify track"
+
+
 def get_source(url: str):
-    info = ytdl.extract_info(url, download=False)
-    return info["url"], info.get("title", "Unknown title")
+    if "open.spotify.com" in url:
+        title = get_spotify_title(url)
+        url = f"ytsearch:{title}"
+
+    try:
+        info = ytdl.extract_info(url, download=False)
+        if "entries" in info:
+            info = info["entries"][0]  # pega a primeira música se for playlist
+        return info["url"], info.get("title", "Unknown title")
+    except Exception as e:
+        print(f"[ ERROR ] yt_dlp failed: {e}")
+        return None, None
 
 
 async def animate_extraction(ctx, msg):
@@ -39,10 +70,13 @@ async def animate_extraction(ctx, msg):
             await msg.edit(content=f"[ FFMPEG ] **Extracting and Downloading URL** (  {frame}  )")
             await asyncio.sleep(0.25)
             i += 1
-        except discord.NotFound:
+        except (discord.NotFound, asyncio.CancelledError):
             break
-        except asyncio.CancelledError:
-            break
+
+
+@bot.event
+async def on_ready():
+    print(f"[ LOG ] BOT CONNECTED AS: {bot.user}")
 
 
 async def next(ctx):
@@ -53,8 +87,13 @@ async def next(ctx):
 
         song = queues[ctx.guild.id].pop(0)
         source_url, title = await asyncio.to_thread(get_source, song["url"])
-        current_sources[ctx.guild.id] = source_url
 
+        if not source_url:
+            await ctx.send("[  ✖  ] Failed to load this track, skipping...")
+            task.cancel()
+            return await next(ctx)
+
+        current_sources[ctx.guild.id] = source_url
         await asyncio.sleep(1.5)
 
         try:
@@ -72,11 +111,6 @@ async def next(ctx):
     else:
         await ctx.send("[  *  ] Queue finished")
         current_sources.pop(ctx.guild.id, None)
-
-
-@bot.event
-async def on_ready():
-    print(f"[ LOG ] Bot conectado como: {bot.user}")
 
 
 @bot.command(name="help")
@@ -163,7 +197,37 @@ async def add(ctx, url: str):
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect(self_deaf=True)
 
-    source_url, title = await asyncio.to_thread(get_source, url)
+    msg = await ctx.send("[ FFMPEG ] **Processing link**")
+    async def animate_processing(ctx, msg):
+        frames = ["○", "●"]
+        i = 0
+        while True:
+            try:
+                frame = frames[i % len(frames)]
+                await msg.edit(content=f"[ FFMPEG ] **Processing link** (  {frame}  )")
+                await asyncio.sleep(0.25)
+                i += 1
+            except (discord.NotFound, asyncio.CancelledError):
+                break
+
+    task = asyncio.create_task(animate_processing(ctx, msg))
+
+    try:
+        source_url, title = await asyncio.to_thread(get_source, url)
+    finally:
+        task.cancel()
+
+    if not source_url:
+        try:
+            await msg.edit(content="[  ✖  ] Could not process this link. Unsupported or invalid URL.")
+        except discord.NotFound:
+            pass
+        return
+
+    try:
+        await msg.edit(content=f"[ FFMPEG ] **Link processed successfully!** (  ✓  )")
+    except discord.NotFound:
+        pass
 
     if ctx.guild.id not in queues:
         queues[ctx.guild.id] = []
