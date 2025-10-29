@@ -10,7 +10,7 @@ load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="libre!", intents=intents)
+bot = commands.Bot(command_prefix="libre!", intents=intents, help_command=None)
 
 yt_dl_opts = {"format": "bestaudio", "noplaylist": True}
 ytdl = yt_dlp.YoutubeDL(yt_dl_opts)
@@ -77,6 +77,72 @@ async def next(ctx):
 @bot.event
 async def on_ready():
     print(f"[ LOG ] Bot conectado como: {bot.user}")
+
+
+@bot.command(name="help")
+async def help_command(ctx):
+    embed = discord.Embed(
+        title="LibreStation — Command Help",
+        description="List of available commands for the LibreStation bot.\nUse `libre!<command>` to execute.",
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="▶  Music Playback",
+        value=(
+            "**add <url>** — Adds a song to the queue and starts playing.\n"
+            "**play** — Resumes the current playback.\n"
+            "**stop** — Pauses the current song.\n"
+            "**skip** — Skips to the next song.\n"
+            "**queue** — Displays the current playback queue.\n"
+            "**exit** — Disconnects the bot from the voice channel."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="▶ Information",
+        value=(
+            "**help** — Shows this help message.\n"
+            "**about** — Displays information about the bot."
+        ),
+        inline=False
+    )
+
+    embed.set_footer(
+        text=(
+            "LibreStation © 2025 — Free software under the GNU General Public License v2 (GPLv2)\n"
+            "You may redistribute and/or modify this program under the terms of the GPLv2."
+        )
+    )
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
+
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="about")
+async def about(ctx):
+    embed = discord.Embed(
+        title="About LibreStation",
+        description=(
+            "**LibreStation** is a minimalist and open-source music bot developed in Python "
+            "using `discord.py` and `yt_dlp`, and licensed under the terms of the **GNU General Public License v2**.\n\n"
+            "⏺  **Default prefix:** `libre!`\n"
+            "⏺  **License:** [GNU GPL v2](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)\n"
+            "⏺  **Source code:** publicly available at https://github.com/exzygo/LibreStation"
+        ),
+        color=discord.Color.green()
+    )
+
+    embed.set_footer(
+        text=(
+            "LibreStation © 2025 — Distributed under the GNU GPLv2.\n"
+            "No warranties; see the full license text for details."
+        )
+    )
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
+
+    await ctx.send(embed=embed)
 
 
 @bot.command()
