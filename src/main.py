@@ -159,9 +159,9 @@ async def about(ctx):
     embed = discord.Embed(
         title="About LibreStation",
         description=(
-            "**LibreStation** is a minimalist and open-source music bot developed in Python"
-            "using `discord.py` and `yt_dlp`, licesenc under the **GNU GPLv2** and with support\n"
-	    "for Youtube and Spotify music links.\n\n"
+            "**LibreStation** is a minimalist and open-source music bot developed in Python "
+            "using `discord.py` and `yt_dlp`, licesenc under the **GNU GPLv2** and with support"
+	        "for Youtube and Spotify music links.\n\n"
             "⏺  **Default prefix:** `libre!`\n"
             "⏺  **License:** [GNU GPL v2](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)\n"
             "⏺  **Source code:** publicly available at https://github.com/exzygo/LibreStation"
