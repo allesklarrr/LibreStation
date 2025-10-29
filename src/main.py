@@ -89,7 +89,7 @@ async def next(ctx):
         source_url, title = await asyncio.to_thread(get_source, song["url"])
 
         if not source_url:
-            await ctx.send("[  ✖  ] Failed to load this track, skipping...")
+            await ctx.send("[  ✖  ] Failed to load this track. Skipping to next on queue")
             task.cancel()
             return await next(ctx)
 
