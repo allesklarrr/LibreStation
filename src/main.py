@@ -32,6 +32,15 @@ queues = {}
 paused_timestamps = {}
 current_sources = {}
 
+def status_embed(title: str, description: str, color: discord.Color):
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color
+    )
+    embed.set_footer(text="LibreStation • Streaming Engine")
+    return embed
+
 
 def get_spotify_title(spotify_url: str):
     try:
@@ -81,36 +90,56 @@ async def on_ready():
 
 async def next(ctx):
     vc = ctx.voice_client
-    if ctx.guild.id in queues and queues[ctx.guild.id]:
-        msg = await ctx.send("[ FFMPEG ] **Extracting and Downloading URL**")
-        task = asyncio.create_task(animate_extraction(ctx, msg))
+    guild_id = ctx.guild.id
 
-        song = queues[ctx.guild.id].pop(0)
+    if guild_id in queues and queues[guild_id]:
+        song = queues[guild_id].pop(0)
+
+        status_msg = await ctx.send(
+            embed=status_embed(
+                "↺ Preparing playback",
+                "Extracting audio source and initializing stream...",
+                discord.Color.gold()
+            )
+        )
+
         source_url, title = await asyncio.to_thread(get_source, song["url"])
 
         if not source_url:
-            await ctx.send("[  ✖  ] Failed to load this track. Skipping to next on queue")
-            task.cancel()
+            await status_msg.edit(
+                embed=status_embed(
+                    "✖ Failed",
+                    "Could not load this track. Skipping...",
+                    discord.Color.red()
+                )
+            )
             return await next(ctx)
 
-        current_sources[ctx.guild.id] = source_url
-        await asyncio.sleep(1.5)
+        current_sources[guild_id] = source_url
+        await asyncio.sleep(1)
 
-        try:
-            task.cancel()
-            await msg.edit(content=f"[ FFMPEG ] **Stream ready!** (  ✓  )")
-        except Exception:
-            pass
+        await status_msg.edit(
+            embed=status_embed(
+                "▶ Now Playing",
+                f"**{title}**",
+                discord.Color.blurple()
+            )
+        )
 
         vc.play(
             discord.FFmpegPCMAudio(source_url, **ffmpeg_opts),
             after=lambda e: asyncio.run_coroutine_threadsafe(next(ctx), bot.loop)
         )
-        await ctx.send(f"[  ▶  ] Now playing: **{title}**")
 
     else:
-        await ctx.send("[  *  ] Queue finished")
-        current_sources.pop(ctx.guild.id, None)
+        await ctx.send(
+            embed=status_embed(
+                "⏹ Queue finished",
+                "No more tracks in queue.",
+                discord.Color.dark_grey()
+            )
+        )
+        current_sources.pop(guild_id, None)
 
 
 @bot.command(name="help")
@@ -192,49 +221,50 @@ async def exit(ctx):
 @bot.command()
 async def add(ctx, url: str):
     if not ctx.author.voice:
-        await ctx.send("You need to be on a voice channel, man. Sybau")
+        await ctx.send(
+            embed=status_embed(
+                "✖ Error",
+                "You must be connected to a voice channel.",
+                discord.Color.red()
+            )
+        )
         return
 
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect(self_deaf=True)
 
-    msg = await ctx.send("[ FFMPEG ] **Processing link**")
-    async def animate_processing(ctx, msg):
-        frames = ["○", "●"]
-        i = 0
-        while True:
-            try:
-                frame = frames[i % len(frames)]
-                await msg.edit(content=f"[ FFMPEG ] **Processing link** (  {frame}  )")
-                await asyncio.sleep(0.25)
-                i += 1
-            except (discord.NotFound, asyncio.CancelledError):
-                break
+    status_msg = await ctx.send(
+        embed=status_embed(
+            "↺ Processing track",
+            "Resolving source and preparing audio...",
+            discord.Color.gold()
+        )
+    )
 
-    task = asyncio.create_task(animate_processing(ctx, msg))
-
-    try:
-        source_url, title = await asyncio.to_thread(get_source, url)
-    finally:
-        task.cancel()
+    source_url, title = await asyncio.to_thread(get_source, url)
 
     if not source_url:
-        try:
-            await msg.edit(content="[  ✖  ] Could not process this link. Unsupported or invalid URL.")
-        except discord.NotFound:
-            pass
+        await status_msg.edit(
+            embed=status_embed(
+                "✖ Invalid link",
+                "Unsupported or invalid URL.",
+                discord.Color.red()
+            )
+        )
         return
 
-    try:
-        await msg.edit(content=f"[ FFMPEG ] **Link processed successfully!** (  ✓  )")
-    except discord.NotFound:
-        pass
+    await status_msg.edit(
+        embed=status_embed(
+            "✔ Added to queue",
+            f"**{title}**",
+            discord.Color.green()
+        )
+    )
 
     if ctx.guild.id not in queues:
         queues[ctx.guild.id] = []
 
     queues[ctx.guild.id].append({"url": url, "title": title})
-    await ctx.send(f"[  *  ] Music added: **{title}**")
 
     vc = ctx.voice_client
     if not vc.is_playing() and not vc.is_paused():
