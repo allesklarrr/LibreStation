@@ -275,12 +275,61 @@ async def skip(ctx):
 
 @bot.command()
 async def queue(ctx):
-    if ctx.guild.id not in queues or len(queues[ctx.guild.id]) == 0:
-        await ctx.send("[  *  ] No music on queue")
+    guild_id = ctx.guild.id
+
+    if guild_id not in queues or len(queues[guild_id]) == 0:
+        embed = discord.Embed(
+            title="⊹˚♬₊⋆ - Queue",
+            description="No music in queue.",
+            color=discord.Color.dark_grey()
+        )
+        await ctx.send(embed=embed)
         return
 
-    queue_list = "\n".join([f"{i+1}. **{song['title']}**" for i, song in enumerate(queues[ctx.guild.id])])
-    await ctx.send(f"[  *  ] **Queue:**\n{queue_list}")
+    embed = discord.Embed(
+        title="𝄞 - Music Queue",
+        color=discord.Color.blurple()
+    )
+
+    # Now Playing
+    vc = ctx.voice_client
+    if vc and vc.is_playing():
+        embed.add_field(
+            name="▶ Now Playing",
+            value="Streaming from queue",
+            inline=False
+        )
+    else:
+        embed.add_field(
+            name="▶ Now Playing",
+            value="Nothing playing",
+            inline=False
+        )
+
+    # Queue list (limit to 10 items)
+    max_items = 10
+    queue_slice = queues[guild_id][:max_items]
+
+    queue_text = ""
+    for i, song in enumerate(queue_slice, start=1):
+        queue_text += f"`{i}.` **{song['title']}**\n"
+
+    if len(queues[guild_id]) > max_items:
+        queue_text += f"\n`+ {len(queues[guild_id]) - max_items} more tracks...`"
+
+    embed.add_field(
+        name="⌲ Up Next",
+        value=queue_text,
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"Total tracks in queue: {len(queues[guild_id])}"
+    )
+
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
+
+    await ctx.send(embed=embed)
 
 
 bot.run(os.getenv("BOT_TOKEN"))
